@@ -1,0 +1,107 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the logistics platform",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string", "description": "Display name (case-insensitive login)" },
+        "username": { "type": "string", "description": "Lowercase name used for unique identification" },
+        "role": { "type": "string", "enum": ["admin", "agent", "client"], "description": "User role" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["uid", "name", "username", "role", "createdAt"]
+    },
+    "Parcel": {
+      "title": "Parcel",
+      "description": "A logistics parcel",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "trackingNumber": { "type": "string" },
+        "status": { "type": "string", "enum": ["Entrant", "Non lié", "Lié", "Expédié", "Prêt", "Livré"] },
+        "weight": { "type": "number" },
+        "fee": { "type": "number" },
+        "customFee": { "type": "number" },
+        "note": { "type": "string" },
+        "internalNote": { "type": "string" },
+        "clientId": { "type": "string" },
+        "sackId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "originalUrl": { "type": "string" },
+              "thumbnailUrl": { "type": "string" },
+              "uploadedAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
+      },
+      "required": ["id", "trackingNumber", "status", "createdAt", "updatedAt"]
+    },
+    "Log": {
+      "title": "Log",
+      "description": "Audit log for parcel actions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "parcelId": { "type": "string" },
+        "userId": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "parcelId", "userId", "action", "timestamp"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Global application settings",
+      "type": "object",
+      "properties": {
+        "pricePerKg": { "type": "number", "description": "Global shipping rate in MGA per kg" }
+      },
+      "required": ["pricePerKg"]
+    },
+    "Sack": {
+      "title": "Sack",
+      "description": "A sack containing multiple parcels",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "barcode": { "type": "string" },
+        "status": { "type": "string", "enum": ["Ouvert", "Fermé", "Reçu"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "barcode", "status", "createdAt", "updatedAt", "createdBy"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles"
+    },
+    "/parcels/{parcelId}": {
+      "schema": { "$ref": "#/entities/Parcel" },
+      "description": "Logistics parcels"
+    },
+    "/logs/{logId}": {
+      "schema": { "$ref": "#/entities/Log" },
+      "description": "Audit logs"
+    },
+    "/settings/{documentId}": {
+      "schema": { "$ref": "#/entities/Settings" },
+      "description": "Global settings"
+    },
+    "/sacks/{sackId}": {
+      "schema": { "$ref": "#/entities/Sack" },
+      "description": "Sacks containing parcels"
+    }
+  }
+}
