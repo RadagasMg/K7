@@ -20,6 +20,7 @@ export function ParcelTable({ parcels, clients = [], profile, onEdit, readOnly }
   const [parcelToArchive, setParcelToArchive] = useState<Parcel | null>(null);
   const [parcelToRestore, setParcelToRestore] = useState<Parcel | null>(null);
   const [parcelToPrint, setParcelToPrint] = useState<Parcel | null>(null);
+  const [parcelToView, setParcelToView] = useState<Parcel | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const printRef = useRef<HTMLDivElement>(null);
@@ -152,16 +153,19 @@ export function ParcelTable({ parcels, clients = [], profile, onEdit, readOnly }
             return (
               <tr key={parcel.id} className={delayed ? 'bg-orange-50 dark:bg-orange-900/10' : ''}>
                 <td className="whitespace-nowrap px-6 py-4">
-                  <div className="flex items-center">
-                    <Package className="mr-2 h-4 w-4 text-gray-400 dark:text-gray-500" />
-                    <span className="font-medium text-gray-900 dark:text-white">{parcel.trackingNumber}</span>
+                  <button 
+                    onClick={() => setParcelToView(parcel)}
+                    className="flex items-center text-left hover:opacity-80 transition-opacity focus:outline-none"
+                  >
+                    <Package className="mr-2 h-4 w-4 text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                    <span className="font-medium text-blue-600 dark:text-blue-400 hover:underline">{parcel.trackingNumber}</span>
                     {delayed && (
                       <span className="ml-2 inline-flex items-center rounded-full bg-orange-100 dark:bg-orange-900/30 px-2.5 py-0.5 text-xs font-medium text-orange-800 dark:text-orange-400">
                         <AlertTriangle className="mr-1 h-3 w-3" />
                         +7 Jours
                       </span>
                     )}
-                  </div>
+                  </button>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
                   <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${getStatusColor(parcel.status)}`}>
@@ -310,6 +314,134 @@ export function ParcelTable({ parcels, clients = [], profile, onEdit, readOnly }
                 className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
               >
                 {isProcessing ? 'Restauration...' : 'Restaurer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Parcel View Details Modal */}
+      {parcelToView && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-xl border border-gray-100 dark:border-gray-800 relative max-h-[90vh] overflow-y-auto">
+            <button 
+              onClick={() => setParcelToView(null)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 pr-8">Détails du Colis</h3>
+            
+            <div className="space-y-6">
+              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 flex flex-col items-center">
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">ID Interne / Code Interne</p>
+                <div className="bg-white p-2 rounded scale-90 sm:scale-100">
+                  <Barcode value={parcelToView.id} width={1.5} height={60} fontSize={14} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Tracking (Externe)</p>
+                  <p className="mt-1 text-base font-semibold text-gray-900 dark:text-white">{parcelToView.trackingNumber}</p>
+                </div>
+                
+                <div>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Statut Actuel</p>
+                  <div className="mt-1">
+                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${getStatusColor(parcelToView.status)}`}>
+                      {parcelToView.status}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Client Associé</p>
+                  <p className="mt-1 text-sm text-gray-900 dark:text-white">
+                    {parcelToView.clientId ? getClientDisplay(parcelToView.clientId) : <span className="italic text-gray-400">Non lié</span>}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Poids</p>
+                  <p className="mt-1 text-sm text-gray-900 dark:text-white">
+                    {parcelToView.weight ? `${parcelToView.weight} kg` : '-'}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Date de création</p>
+                  <p className="mt-1 text-sm text-gray-900 dark:text-white">
+                    {new Date(parcelToView.createdAt).toLocaleString('fr-FR')}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Dernière mise à jour</p>
+                  <p className="mt-1 text-sm text-gray-900 dark:text-white">
+                    {new Date(parcelToView.updatedAt).toLocaleString('fr-FR')}
+                  </p>
+                </div>
+                
+                {parcelToView.sackId && (
+                  <div className="sm:col-span-2 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
+                    <p className="text-sm font-medium text-blue-800 dark:text-blue-300">Contenu dans le sac</p>
+                    <p className="mt-1 text-sm font-mono text-blue-900 dark:text-blue-200">{parcelToView.sackId}</p>
+                  </div>
+                )}
+              </div>
+
+              {parcelToView.images && parcelToView.images.length > 0 && (
+                <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Photos du colis</p>
+                  <div className="grid grid-cols-3 gap-4">
+                    {['label', 'scale', 'opened'].map((type) => {
+                      const img = parcelToView.images?.find(i => i.type === type);
+                      const titleMap: Record<string, string> = {
+                        label: 'Étiquette',
+                        scale: 'Sur la balance',
+                        opened: 'Ouvert'
+                      };
+                      if (!img) return null;
+                      return (
+                        <div key={type} className="flex flex-col items-center">
+                          <div className="w-full aspect-square bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 relative">
+                            <img 
+                              src={img.thumbnailUrl} 
+                              alt={titleMap[type]} 
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                // Fallback to original if thumbnail fails
+                                (e.target as HTMLImageElement).src = img.originalUrl;
+                              }}
+                            />
+                            <a 
+                              href={img.originalUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 transition-colors"
+                              title={`Voir ${titleMap[type]}`}
+                            >
+                              <span className="sr-only">Agrandir</span>
+                            </a>
+                          </div>
+                          <span className="text-xs text-gray-500 mt-2 text-center">{titleMap[type]}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-8 flex justify-end">
+              <button
+                onClick={() => setParcelToView(null)}
+                className="rounded-md bg-gray-100 dark:bg-gray-800 px-4 py-2 text-sm font-medium text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+              >
+                Fermer
               </button>
             </div>
           </div>
