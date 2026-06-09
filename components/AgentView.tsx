@@ -7,9 +7,9 @@ import { logAction } from '@/lib/logger';
 import { Parcel, UserProfile, ParcelImage, ParcelStatus } from '@/types';
 import { ParcelTable } from '@/components/ParcelTable';
 import { SackManager } from '@/components/SackManager';
-import { Scan, X, Camera, Upload, Package, ShoppingBag, Printer } from 'lucide-react';
+import { Scan, X, Camera, Upload, Package, ShoppingBag } from 'lucide-react';
 import { compressImage } from '@/lib/imageUtils';
-import Barcode from 'react-barcode';
+import { Html5Qrcode } from 'html5-qrcode';
 
 interface AgentViewProps {
   profile: UserProfile;
@@ -20,8 +20,26 @@ export function AgentView({ profile }: AgentViewProps) {
   const [parcels, setParcels] = useState<Parcel[]>([]);
   const [trackingInput, setTrackingInput] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-  const [barcodePrintCount, setBarcodePrintCount] = useState<number>(1);
-  const [printBarcodes, setPrintBarcodes] = useState<string[]>([]);
+  
+  // States for Mobile Camera Barcode Scanner
+  const [isMobile, setIsMobile] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const html5QrcodeRef = useRef<Html5Qrcode | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      setIsMobile(mobile);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (html5QrcodeRef.current) {
+        html5QrcodeRef.current.stop().catch(err => console.error('Cleanup scanner error:', err));
+      }
+    };
+  }, []);
   
   const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
   const [editWeight, setEditWeight] = useState('');
@@ -85,14 +103,7 @@ export function AgentView({ profile }: AgentViewProps) {
     };
   }, []);
 
-  const handleScan = async (e: FormEvent) => {
-    e.preventDefault();
-    const code = trackingInput.trim();
-    if (!code) return;
-
-    setTrackingInput('');
-    if (inputRef.current) inputRef.current.focus();
-
+  const processScan = async (code: string) => {
     const now = new Date().toISOString();
 
     // Prevent scanning sack QR codes in intake view
@@ -191,6 +202,61 @@ export function AgentView({ profile }: AgentViewProps) {
     }
   };
 
+  const handleScan = async (e: FormEvent) => {
+    e.preventDefault();
+    const code = trackingInput.trim();
+    if (!code) return;
+
+    setTrackingInput('');
+    if (inputRef.current) inputRef.current.focus();
+
+    await processScan(code);
+  };
+
+  const startScanning = async () => {
+    setIsScanning(true);
+    try {
+      setTimeout(async () => {
+        const html5QrCode = new Html5Qrcode("camera-reader");
+        html5QrcodeRef.current = html5QrCode;
+        
+        const config = {
+          fps: 10,
+          qrbox: (width: number, height: number) => {
+            return { width: Math.floor(width * 0.75), height: Math.floor(height * 0.75) };
+          },
+          aspectRatio: 1.0,
+        };
+
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          config,
+          async (decodedText) => {
+            await stopScanning();
+            await processScan(decodedText);
+          },
+          () => {}
+        );
+      }, 300);
+    } catch (err) {
+      console.error("Camera access error:", err);
+      toast.error("Impossible d'accéder à la caméra de l'appareil.");
+      setIsScanning(false);
+    }
+  };
+
+  const stopScanning = async () => {
+    if (html5QrcodeRef.current && html5QrcodeRef.current.isScanning) {
+      try {
+        await html5QrcodeRef.current.stop();
+      } catch (err) {
+        console.error("Error stopping scanner:", err);
+      }
+    }
+    html5QrcodeRef.current = null;
+    setIsScanning(false);
+  };
+
   const uploadImage = async (file: File, parcelId: string, type: 'label' | 'scale' | 'opened'): Promise<ParcelImage> => {
     const timestamp = Date.now();
     const ext = file.name.split('.').pop() || 'jpg';
@@ -285,71 +351,6 @@ export function AgentView({ profile }: AgentViewProps) {
     }
   };
 
-  const handlePrintBarcodes = async () => {
-    if (barcodePrintCount < 1 || barcodePrintCount > 10) {
-      toast.error('Veuillez choisir un nombre entre 1 et 10');
-      return;
-    }
-
-    const todayDate = new Date();
-    const yy = String(todayDate.getFullYear()).slice(-2);
-    const mm = String(todayDate.getMonth() + 1).padStart(2, '0');
-    const dd = String(todayDate.getDate()).padStart(2, '0');
-    const prefix = `K7P-${yy}${mm}${dd}`;
-
-    let maxNN = 0;
-    parcels.forEach(p => {
-      if (p.id?.startsWith(prefix)) {
-        const numPart = p.id.substring(prefix.length);
-        const num = parseInt(numPart, 10);
-        if (!isNaN(num)) {
-          maxNN = Math.max(maxNN, num);
-        }
-      }
-    });
-
-    const newBarcodes: string[] = [];
-    const now = new Date().toISOString();
-    const batch = writeBatch(db);
-
-    for (let i = 1; i <= barcodePrintCount; i++) {
-      const newNN = String(maxNN + i).padStart(2, '0');
-      const newId = `${prefix}${newNN}`;
-      newBarcodes.push(newId);
-
-      const newParcel: Parcel = {
-        id: newId,
-        trackingNumber: newId,
-        status: 'Entrant',
-        createdAt: now,
-        updatedAt: now
-      };
-      
-      const pRef = doc(db, 'parcels', newId);
-      batch.set(pRef, newParcel);
-    }
-
-    try {
-      await batch.commit();
-      // Log actions separately since batch doesn't handle collections dynamically well here without helpers, 
-      // or we can just iterate again. We use logAction for each.
-      for (const id of newBarcodes) {
-        await logAction(id, profile.uid, 'CREATED', { status: 'Entrant', method: 'batch_print' });
-      }
-
-      setPrintBarcodes(newBarcodes);
-      setTimeout(() => {
-        window.print();
-        setTimeout(() => setPrintBarcodes([]), 1000);
-      }, 500);
-      
-      toast.success(`${barcodePrintCount} code(s)-barres généré(s)`);
-    } catch (e) {
-      console.error(e);
-      toast.error('Erreur lors de la génération des codes-barres');
-    }
-  };
-
   return (
     <>
     <div className="print:hidden">
@@ -382,7 +383,7 @@ export function AgentView({ profile }: AgentViewProps) {
       {activeMainTab === 'colis' ? (
         <>
           {/* Top Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="mb-8">
             {/* Scanner Section */}
             <div className="rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col justify-between">
               <h2 className="mb-4 flex items-center text-lg font-semibold text-gray-800 dark:text-gray-100">
@@ -401,35 +402,36 @@ export function AgentView({ profile }: AgentViewProps) {
                 />
                 <button
                   type="submit"
-                  className="rounded-md bg-blue-600 px-8 font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 h-full"
+                  className="rounded-md bg-blue-600 px-8 font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 h-full whitespace-nowrap"
                 >
                   Valider
                 </button>
+                {isMobile && !isScanning && (
+                  <button
+                    type="button"
+                    onClick={startScanning}
+                    className="rounded-md bg-zinc-800 hover:bg-zinc-700 dark:bg-zinc-700 dark:hover:bg-zinc-600 px-4 h-full flex items-center justify-center text-white focus:outline-none transition-colors"
+                    title="Scanner par caméra"
+                  >
+                    <Camera className="h-5 w-5" />
+                  </button>
+                )}
               </form>
-            </div>
 
-            {/* Print Barcodes Section */}
-            <div className="rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col justify-between">
-              <h2 className="mb-4 flex items-center text-lg font-semibold text-gray-800 dark:text-gray-100">
-                <Printer className="mr-2 h-5 w-5 text-blue-600 dark:text-blue-500" />
-                Imprimer étiquettes
-              </h2>
-              <div className="flex gap-4 items-center h-[52px]">
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={barcodePrintCount}
-                  onChange={(e) => setBarcodePrintCount(Number(e.target.value))}
-                  className="block w-24 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-4 py-2 text-lg shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 h-full"
-                />
-                <button
-                  onClick={handlePrintBarcodes}
-                  className="rounded-md bg-green-600 px-6 font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 h-full flex-grow text-center"
-                >
-                  Générer & Imprimer
-                </button>
-              </div>
+              {isScanning && (
+                <div className="mt-4 flex flex-col items-center gap-4 bg-gray-50 dark:bg-black/40 p-4 rounded-xl border border-gray-100 dark:border-gray-800">
+                  <div className="w-full max-w-sm overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 aspect-video relative bg-black">
+                    <div id="camera-reader" className="w-full h-full"></div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={stopScanning}
+                    className="rounded-md bg-rose-600 hover:bg-rose-700 text-white px-6 py-2 text-sm font-medium focus:outline-none transition-colors"
+                  >
+                    Arrêter le scan caméra
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -652,17 +654,6 @@ export function AgentView({ profile }: AgentViewProps) {
       )}
     </div>
 
-    {/* Printable Print Barcodes View (only visible when printing) */}
-    {printBarcodes.length > 0 && (
-      <div className="hidden print:block fixed inset-0 bg-white z-[9999] w-full p-8">
-        {printBarcodes.map((code) => (
-          <div key={code} className="flex flex-col items-center justify-center mb-8" style={{ pageBreakAfter: 'always' }}>
-            <Barcode value={code} width={2.5} height={100} format="CODE128" />
-            <p className="font-bold text-3xl mt-2 text-black">{code}</p>
-          </div>
-        ))}
-      </div>
-    )}
     </>
   );
 }

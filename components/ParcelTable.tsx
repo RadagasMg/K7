@@ -1,6 +1,6 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef } from 'react';
 import { Parcel, UserProfile } from '@/types';
-import { AlertTriangle, Edit2, Package, Trash2, RefreshCw, ChevronUp, ChevronDown, Printer, Search, X } from 'lucide-react';
+import { AlertTriangle, Edit2, Package, Trash2, RefreshCw, ChevronUp, ChevronDown, Printer } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { toast } from 'sonner';
@@ -22,7 +22,6 @@ export function ParcelTable({ parcels, clients = [], profile, onEdit, readOnly }
   const [parcelToPrint, setParcelToPrint] = useState<Parcel | null>(null);
   const [parcelToView, setParcelToView] = useState<Parcel | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
 
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -51,34 +50,19 @@ export function ParcelTable({ parcels, clients = [], profile, onEdit, readOnly }
     return clientId;
   };
 
-  const filteredAndSortedParcels = useMemo(() => {
-    let result = [...parcels];
+  const sortedParcels = [...parcels].sort((a, b) => {
+    let valA: any = a[sortColumn as keyof Parcel];
+    let valB: any = b[sortColumn as keyof Parcel];
 
-    if (searchQuery.trim()) {
-      const lowerQuery = searchQuery.toLowerCase();
-      result = result.filter(p => {
-        const trackingMatch = p.trackingNumber.toLowerCase().includes(lowerQuery);
-        const statusMatch = p.status.toLowerCase().includes(lowerQuery);
-        const clientMatch = getClientDisplay(p.clientId).toLowerCase().includes(lowerQuery);
-        const idMatch = p.id.toLowerCase().includes(lowerQuery);
-        return trackingMatch || statusMatch || clientMatch || idMatch;
-      });
+    if (sortColumn === 'clientName') {
+      valA = getClientDisplay(a.clientId);
+      valB = getClientDisplay(b.clientId);
     }
 
-    return result.sort((a, b) => {
-      let valA: any = a[sortColumn as keyof Parcel];
-      let valB: any = b[sortColumn as keyof Parcel];
-
-      if (sortColumn === 'clientName') {
-        valA = getClientDisplay(a.clientId);
-        valB = getClientDisplay(b.clientId);
-      }
-
-      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
-      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-  }, [parcels, searchQuery, sortColumn, sortDirection, profile, clients]);
+    if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+    if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
+  });
 
   const handleArchive = async () => {
     if (!parcelToArchive) return;
@@ -141,35 +125,8 @@ export function ParcelTable({ parcels, clients = [], profile, onEdit, readOnly }
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="relative max-w-sm w-full">
-          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-            <Search className="h-4 w-4 text-gray-400" />
-          </div>
-          <input
-            type="text"
-            className="block w-full rounded-md border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 py-2 pl-10 pr-10 text-sm placeholder-gray-500 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:placeholder-gray-400 dark:text-white"
-            placeholder="Rechercher par tracking, client, statut..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-        <div className="text-sm text-gray-500 dark:text-gray-400">
-          {filteredAndSortedParcels.length} {filteredAndSortedParcels.length > 1 ? 'colis trouvés' : 'colis trouvé'}
-        </div>
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
-        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
+      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
         <thead className="bg-gray-50 dark:bg-gray-800/50">
           <tr>
             <th onClick={() => handleSort('trackingNumber')} className="cursor-pointer px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
@@ -191,7 +148,7 @@ export function ParcelTable({ parcels, clients = [], profile, onEdit, readOnly }
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-800 bg-white dark:bg-gray-900">
-          {filteredAndSortedParcels.map((parcel) => {
+          {sortedParcels.map((parcel) => {
             const delayed = isDelayed(parcel);
             return (
               <tr key={parcel.id} className={delayed ? 'bg-orange-50 dark:bg-orange-900/10' : ''}>
@@ -278,7 +235,7 @@ export function ParcelTable({ parcels, clients = [], profile, onEdit, readOnly }
               </tr>
             );
           })}
-          {filteredAndSortedParcels.length === 0 && (
+          {parcels.length === 0 && (
             <tr>
               <td colSpan={readOnly ? 5 : 6} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                 Aucun colis trouvé
@@ -287,7 +244,6 @@ export function ParcelTable({ parcels, clients = [], profile, onEdit, readOnly }
           )}
         </tbody>
       </table>
-    </div>
 
       {/* Hidden Print Area */}
       {parcelToPrint && (
