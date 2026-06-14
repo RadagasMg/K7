@@ -9,7 +9,6 @@ export interface Sack {
   updatedAt: string;
   createdBy: string;
   actualWeight?: number;
-  shipperName?: string;
   talonImageUrl?: string;
   talonReference?: string;
 }

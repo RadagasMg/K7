@@ -194,7 +194,7 @@ export function DeconsolidationView({ profile }: DeconsolidationViewProps) {
                         >
                           <div>
                             <span className="font-semibold text-gray-900 dark:text-white block">{sack.barcode}</span>
-                            <span className="text-xs text-gray-500">{sack.shipperName ? `Via ${sack.shipperName}` : 'Pack en transit'}</span>
+                            <span className="text-xs text-gray-500">Pack en transit</span>
                           </div>
                           <span className="font-mono text-gray-600 dark:text-gray-400 font-medium whitespace-nowrap ml-4">
                             {sacksParcelCount[sack.barcode] !== undefined ? `${sacksParcelCount[sack.barcode]} colis` : '...'}

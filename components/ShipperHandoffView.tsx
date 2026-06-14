@@ -15,7 +15,6 @@ interface ShipperHandoffViewProps {
 export function ShipperHandoffView({ profile }: ShipperHandoffViewProps) {
   const [closedSacks, setClosedSacks] = useState<Sack[]>([]);
   const [selectedSackIds, setSelectedSackIds] = useState<Set<string>>(new Set());
-  const [shipperName, setShipperName] = useState('');
   const [talonReference, setTalonReference] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -51,10 +50,6 @@ export function ShipperHandoffView({ profile }: ShipperHandoffViewProps) {
       toast.error('Veuillez sélectionner au moins un sac.');
       return;
     }
-    if (!shipperName.trim()) {
-      toast.error('Veuillez entrer le nom du transporteur.');
-      return;
-    }
     if (!talonReference.trim()) {
       toast.error('Veuillez entrer la référence du Talon de Bagage.');
       return;
@@ -73,7 +68,6 @@ export function ShipperHandoffView({ profile }: ShipperHandoffViewProps) {
         batch.update(sackRef, {
           status: 'En Transit',
           updatedAt: now,
-          shipperName,
           talonReference,
         });
 
@@ -109,7 +103,6 @@ export function ShipperHandoffView({ profile }: ShipperHandoffViewProps) {
       
       // Reset form
       setSelectedSackIds(new Set());
-      setShipperName('');
       setTalonReference('');
     } catch (error: any) {
       console.error("Handoff Error:", error);
@@ -189,20 +182,6 @@ export function ShipperHandoffView({ profile }: ShipperHandoffViewProps) {
             <p className="text-sm text-blue-800 dark:text-blue-300 font-medium">
               Sacs sélectionnés: <span className="font-bold text-lg">{selectedSackIds.size}</span>
             </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Nom du Transporteur *
-            </label>
-            <input
-              type="text"
-              required
-              value={shipperName}
-              onChange={(e) => setShipperName(e.target.value)}
-              className="block w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-4 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="Ex: Air Madagascar, Kuaidi..."
-            />
           </div>
 
           <div>

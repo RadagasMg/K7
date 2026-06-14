@@ -9,7 +9,8 @@ import { ParcelTable } from '@/components/ParcelTable';
 import { SackManager } from '@/components/SackManager';
 import { Scan, X, Camera, Upload, Package, ShoppingBag } from 'lucide-react';
 import { compressImage } from '@/lib/imageUtils';
-import { Html5Qrcode } from 'html5-qrcode';
+
+// Note: Html5Qrcode is imported dynamically below to prevent SSR issues
 
 interface AgentViewProps {
   profile: UserProfile;
@@ -19,12 +20,13 @@ export function AgentView({ profile }: AgentViewProps) {
   const [activeMainTab, setActiveMainTab] = useState<'colis' | 'sacs'>('colis');
   const [parcels, setParcels] = useState<Parcel[]>([]);
   const [trackingInput, setTrackingInput] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   
   // States for Mobile Camera Barcode Scanner
   const [isMobile, setIsMobile] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
-  const html5QrcodeRef = useRef<Html5Qrcode | null>(null);
+  const html5QrcodeRef = useRef<any>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -217,6 +219,8 @@ export function AgentView({ profile }: AgentViewProps) {
     setIsScanning(true);
     try {
       setTimeout(async () => {
+        const h = await import('html5-qrcode');
+        const Html5Qrcode = h.Html5Qrcode;
         const html5QrCode = new Html5Qrcode("camera-reader");
         html5QrcodeRef.current = html5QrCode;
         
@@ -351,6 +355,23 @@ export function AgentView({ profile }: AgentViewProps) {
     }
   };
 
+  const filteredParcels = parcels.filter(p => !p.isArchived).filter(p => {
+    if (!searchQuery) return true;
+    
+    // Only search among these statuses as requested
+    const targetStatuses = ['Non lié', 'Lié', 'En attente'];
+    if (!targetStatuses.includes(p.status as string)) return false;
+
+    const lowerQuery = searchQuery.toLowerCase();
+    const clientName = p.clientName || '';
+    const id = p.id || '';
+    const tracking = p.trackingNumber || '';
+
+    return tracking.toLowerCase().includes(lowerQuery) || 
+           clientName.toLowerCase().includes(lowerQuery) ||
+           id.toLowerCase().includes(lowerQuery);
+  });
+
   return (
     <>
     <div className="print:hidden">
@@ -437,18 +458,27 @@ export function AgentView({ profile }: AgentViewProps) {
 
           {/* Parcels List */}
           <div className="mb-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
-                Colis récents
-              </h2>
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                {parcels.filter(p => !p.isArchived).length} colis
-              </span>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+                  Colis récents
+                </h2>
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  {filteredParcels.length} colis
+                </span>
+              </div>
+              <input
+                type="text"
+                placeholder="Rechercher (Non lié, Lié, En attente)..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full sm:w-80 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm px-4 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
+              />
             </div>
           </div>
           
           <ParcelTable 
-            parcels={parcels.filter(p => !p.isArchived)} 
+            parcels={filteredParcels} 
             clients={clients}
             profile={profile}
             onEdit={(p) => {

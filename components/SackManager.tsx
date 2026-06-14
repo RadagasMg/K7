@@ -228,8 +228,10 @@ export function SackManager({ profile }: SackManagerProps) {
     if (sack.status === 'Ouvert') {
       setActualWeightInput(totalWeight.toFixed(2));
       setClosingSack(sack);
-    } else {
+    } else if (sack.status !== 'En Transit') {
       toggleSackStatus(sack, 'Ouvert');
+    } else {
+      toast.error('Impossible de rouvrir ce sac car il est en transit');
     }
   };
 
@@ -412,7 +414,7 @@ export function SackManager({ profile }: SackManagerProps) {
                     <Lock className="mr-2 h-4 w-4" />
                     Fermer le sac
                   </button>
-                ) : (
+                ) : activeSack?.status !== 'En Transit' ? (
                   <button
                     onClick={() => activeSack && handleToggleStatusClick(activeSack)}
                     className="flex items-center rounded-md bg-blue-100 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50"
@@ -420,7 +422,7 @@ export function SackManager({ profile }: SackManagerProps) {
                     <Unlock className="mr-2 h-4 w-4" />
                     Rouvrir le sac
                   </button>
-                )}
+                ) : null}
               </div>
             </div>
 

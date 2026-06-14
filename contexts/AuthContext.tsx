@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, collection, getDocs, writeBatch, deleteField } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 
 export type Role = 'admin' | 'agent' | 'client';
@@ -30,10 +30,43 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
+let isDbCleaned = false;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (profile && !isDbCleaned) {
+      isDbCleaned = true;
+      const cleanDatabaseShipperFields = async () => {
+        try {
+          const querySnapshot = await getDocs(collection(db, 'sacks'));
+          const batch = writeBatch(db);
+          let hasUpdates = false;
+          querySnapshot.docs.forEach((docSnap) => {
+            const data = docSnap.data();
+            if ('shipperName' in data) {
+              batch.update(docSnap.ref, {
+                shipperName: deleteField()
+              });
+              hasUpdates = true;
+            }
+          });
+          if (hasUpdates) {
+            await batch.commit();
+            console.log('Database correction: cleared shipperName from sacks successfully.');
+          } else {
+            console.log('Database correction: no Sacks with shipperName found.');
+          }
+        } catch (error) {
+          console.error('Database correction: cleanDatabaseShipperFields failed:', error);
+        }
+      };
+      cleanDatabaseShipperFields();
+    }
+  }, [profile]);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
