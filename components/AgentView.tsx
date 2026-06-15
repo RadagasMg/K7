@@ -10,7 +10,7 @@ import { SackManager } from '@/components/SackManager';
 import { Scan, X, Camera, Upload, Package, ShoppingBag } from 'lucide-react';
 import { compressImage } from '@/lib/imageUtils';
 
-// Note: Html5Qrcode is imported dynamically below to prevent SSR issues
+// Note: H5Qrcode is imported dynamically below to prevent SSR issues
 
 interface AgentViewProps {
   profile: UserProfile;
@@ -220,8 +220,8 @@ export function AgentView({ profile }: AgentViewProps) {
     try {
       setTimeout(async () => {
         const h = await import('html5-qrcode');
-        const Html5Qrcode = h.Html5Qrcode;
-        const html5QrCode = new Html5Qrcode("camera-reader");
+        const H5Qrcode = h.Html5Qrcode;
+        const html5QrCode = new H5Qrcode("camera-reader");
         html5QrcodeRef.current = html5QrCode;
         
         const config = {

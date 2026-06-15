@@ -1,7 +1,8 @@
 export default function NotFound() {
   return (
-    <div className="flex items-center justify-center min-h-screen">
-      <h1 className="text-2xl font-bold">404 - File Not Found</h1>
+    <div>
+      <h2>Not Found</h2>
+      <p>Could not find requested resource</p>
     </div>
-  );
+  )
 }
