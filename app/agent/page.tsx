@@ -15,7 +15,7 @@ import { PackagePlus, Box, Truck, PackageOpen, Send, Archive } from 'lucide-reac
 export default function AgentDashboard() {
   const { profile, loading } = useAuth();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'gz_intake' | 'gz_sack' | 'gz_handoff' | 'tnr_deconsolidation' | 'tnr_dispatch' | 'archives'>('gz_intake');
+  const [activeTab, setActiveTab] = useState<'gz_intake' | 'gz_sack' | 'gz_handoff' | 'tnr_deconsolidation' | 'tnr_dispatch' | 'archives' | null>(null);
 
   useEffect(() => {
     if (!loading && (!profile || profile.role !== 'agent')) {
@@ -23,14 +23,20 @@ export default function AgentDashboard() {
     }
   }, [profile, loading, router]);
 
+  const currentTab = activeTab || (profile?.agentLocation === 'madagascar' ? 'tnr_deconsolidation' : 'gz_intake');
+
   if (loading || !profile || profile.role !== 'agent') return <div className="p-8 text-gray-900 dark:text-gray-100">Chargement...</div>;
 
   const agentTabs = [
-    { id: 'gz_intake', label: 'Reception', icon: PackagePlus },
-    { id: 'gz_sack', label: 'Packing', icon: Box },
-    { id: 'gz_handoff', label: 'Shipping', icon: Truck },
-    { id: 'tnr_deconsolidation', label: 'Reception', icon: PackageOpen },
-    { id: 'tnr_dispatch', label: 'Dispatch', icon: Send },
+    ...(profile.agentLocation !== 'madagascar' ? [
+      { id: 'gz_intake', label: 'Reception', icon: PackagePlus },
+      { id: 'gz_sack', label: 'Packing', icon: Box },
+      { id: 'gz_handoff', label: 'Shipping', icon: Truck },
+    ] : []),
+    ...(profile.agentLocation === 'madagascar' ? [
+      { id: 'tnr_deconsolidation', label: 'Reception', icon: PackageOpen },
+      { id: 'tnr_dispatch', label: 'Dispatch', icon: Send },
+    ] : []),
     { id: 'archives', label: 'Archives', icon: Archive },
   ];
 
@@ -38,18 +44,18 @@ export default function AgentDashboard() {
     <DashboardLayout 
       title="Tableau de bord Agent"
       tabs={agentTabs}
-      activeTab={activeTab}
+      activeTab={currentTab}
       onTabChange={(tab: string) => setActiveTab(tab as any)}
     >
       <div className="mx-auto max-w-6xl">
         {/* Top tabs removed, handled by sidebar */}
         
-        {activeTab === 'gz_intake' && <AgentView profile={profile} />}
-        {activeTab === 'gz_sack' && <SackManager profile={profile} />}
-        {activeTab === 'gz_handoff' && <ShipperHandoffView profile={profile} />}
-        {activeTab === 'tnr_deconsolidation' && <DeconsolidationView profile={profile} />}
-        {activeTab === 'tnr_dispatch' && <DispatchView profile={profile} />}
-        {activeTab === 'archives' && <ArchivesView profile={profile} />}
+        {currentTab === 'gz_intake' && <AgentView profile={profile} />}
+        {currentTab === 'gz_sack' && <SackManager profile={profile} />}
+        {currentTab === 'gz_handoff' && <ShipperHandoffView profile={profile} />}
+        {currentTab === 'tnr_deconsolidation' && <DeconsolidationView profile={profile} />}
+        {currentTab === 'tnr_dispatch' && <DispatchView profile={profile} />}
+        {currentTab === 'archives' && <ArchivesView profile={profile} />}
       </div>
     </DashboardLayout>
   );

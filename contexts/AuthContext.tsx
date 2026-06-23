@@ -12,6 +12,7 @@ export interface UserProfile {
   name: string;
   username: string;
   role: Role;
+  agentLocation?: 'china' | 'madagascar';
   createdAt: string;
   isDeleted?: boolean;
 }

@@ -25,6 +25,7 @@ export interface UserProfile {
   name: string;
   username: string;
   role: 'admin' | 'agent' | 'client';
+  agentLocation?: 'china' | 'madagascar';
   clientId?: string;
   createdAt: string;
   isDeleted?: boolean;

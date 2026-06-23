@@ -29,31 +29,54 @@ export default function LoginPage() {
     try {
       // Try to sign in
       await signInWithEmailAndPassword(auth, email, password);
-      toast.success('Connexion réussie');
-      router.push('/');
-    } catch (error: any) {
-      // If it's the bootstrap admin (gianno) and login fails, try to create it
-      if (username === 'gianno' && password === 'azerty1234' && (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found')) {
-        try {
-          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-          
-          // Create the user document
-          await setDoc(doc(db, 'users', userCredential.user.uid), {
-            uid: userCredential.user.uid,
-            name: 'Gianno',
-            username: 'gianno',
+      // Let's create it if username is gianno or admin.
+      const user = auth.currentUser;
+      if (user && (username === 'gianno' || username === 'admin' || username === 'admin2')) {
+        const docSnap = await getDoc(doc(db, 'users', user.uid));
+        if (!docSnap.exists()) {
+          await setDoc(doc(db, 'users', user.uid), {
+            uid: user.uid,
+            name: username === 'admin' || username === 'admin2' ? 'Admin K7' : 'Gianno',
+            username: username,
             role: 'admin',
             createdAt: new Date().toISOString()
           });
-          
-          toast.success('Compte administrateur créé avec succès');
-          router.push('/');
-        } catch (createError: any) {
-          console.error('Bootstrap error:', createError);
-          toast.error('Erreur lors de la création du compte administrateur');
         }
+      }
+      toast.success('Connexion réussie');
+      router.push('/');
+    } catch (error: any) {
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found') {
+        if ((username === 'gianno' && password === 'azerty1234') || ((username === 'admin' || username === 'admin2') && password === 'password123')) {
+          try {
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            
+            await setDoc(doc(db, 'users', userCredential.user.uid), {
+              uid: userCredential.user.uid,
+              name: username === 'admin' || username === 'admin2' ? 'Admin K7' : 'Gianno',
+              username: username,
+              role: 'admin',
+              createdAt: new Date().toISOString()
+            });
+            
+            toast.success('Compte administrateur créé avec succès');
+            router.push('/');
+          } catch (createError: any) {
+            if (createError.code === 'auth/email-already-in-use') {
+              console.error('Bootstrap error (already exists):', createError);
+              toast.error('Le compte existe déjà mais le mot de passe est incorrect.');
+            } else {
+              console.error('Bootstrap error:', createError);
+              toast.error('Erreur lors de la création du compte administrateur');
+            }
+          }
+          return;
+        }
+      }
+      console.error('Login error:', error);
+      if (error.code === 'permission-denied') {
+        toast.error("Erreur de permission base de données (Bootstrap)");
       } else {
-        console.error('Login error:', error);
         toast.error("Nom d'utilisateur ou mot de passe incorrect");
       }
     } finally {

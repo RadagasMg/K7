@@ -24,6 +24,7 @@ export default function AdminDashboard() {
   const [newName, setNewName] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<'admin' | 'agent' | 'client'>('client');
+  const [newAgentLocation, setNewAgentLocation] = useState<'china' | 'madagascar'>('china');
   const [creating, setCreating] = useState(false);
   const [parcels, setParcels] = useState<Parcel[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -105,6 +106,10 @@ export default function AdminDashboard() {
         createdAt: new Date().toISOString()
       };
 
+      if (newRole === 'agent') {
+        userData.agentLocation = newAgentLocation;
+      }
+
       if (newRole === 'client') {
         let maxId = 0;
         users.forEach(u => {
@@ -146,29 +151,87 @@ export default function AdminDashboard() {
           if (!isNaN(num) && num > maxId) maxId = num;
         }
       });
-      console.log('Current max client ID number:', maxId);
 
       const batch = writeBatch(db);
-      let count = 0;
+      let updatedCount = 0;
+
       for (const u of users) {
         if (u.role === 'client' && !u.clientId) {
           maxId++;
           const newClientId = `K7C-${maxId.toString().padStart(3, '0')}`;
-          console.log(`Assigning ${newClientId} to ${u.name}`);
-          batch.update(doc(db, 'users', u.uid), { clientId: newClientId });
-          count++;
+          const userRef = doc(db, 'users', u.uid);
+          batch.update(userRef, { clientId: newClientId });
+          updatedCount++;
         }
       }
 
-      if (count > 0) {
+      if (updatedCount > 0) {
         await batch.commit();
-        toast.success(`${count} ID(s) client généré(s) avec succès.`);
+        toast.success(`${updatedCount} ID clients générés avec succès`);
       } else {
-        toast.info('Aucun client ne manque d\'ID.');
+        toast.info('Aucun ID client manquant trouvé');
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error generating client IDs:', error);
-      toast.error('Erreur: ' + error.message);
+      toast.error('Erreur lors de la génération des ID clients');
+    }
+  };
+
+  const handleResetDatabase = async () => {
+    if (!window.confirm("ATTENTION: Cela va supprimer tous les utilisateurs de la base de données (sauf vous-même) et recréer 4 utilisateurs par défaut. Continuer ?")) {
+      return;
+    }
+
+    try {
+      toast.info("Suppression des utilisateurs...");
+      const batch = writeBatch(db);
+      for (const u of users) {
+        // Do not delete current admin running the script just in case
+        if (u.uid !== profile?.uid) {
+           batch.delete(doc(db, 'users', u.uid));
+        }
+      }
+      await batch.commit();
+
+      toast.info("Création des 4 utilisateurs par défaut...");
+      const defaultUsers = [
+        { name: 'Admin K7', email: 'admin@k7.com', role: 'admin' },
+        { name: 'China Agent', email: 'agent.china@k7.com', role: 'agent', location: 'china' },
+        { name: 'Madagascar Agent', email: 'agent.mada@k7.com', role: 'agent', location: 'madagascar' },
+        { name: 'Client Example', email: 'client1@k7.com', role: 'client' },
+      ];
+
+      for (const du of defaultUsers) {
+        try {
+          // Attempt to create auth user (may fail if already exists)
+          const cred = await createUserWithEmailAndPassword(secondaryAuth, du.email, 'password123');
+          const uid = cred.user.uid;
+          
+          const userData: any = {
+            uid,
+            name: du.name,
+            username: du.email,
+            role: du.role,
+            createdAt: new Date().toISOString()
+          };
+
+          if (du.role === 'agent') userData.agentLocation = du.location;
+          if (du.role === 'client') userData.clientId = 'K7C-001';
+
+          await setDoc(doc(db, 'users', uid), userData);
+        } catch (e: any) {
+          if (e.code === 'auth/email-already-in-use') {
+            console.log(`${du.email} already exists in Auth, skipping auth creation, unfortunately we cannot reset their firestore profile without their UID easily here unless we find them by email. Please delete completely from Firebase console.`);
+          }
+        }
+      }
+
+      await secondaryAuth.signOut();
+      toast.success("Réinitialisation terminée avec succès !");
+
+    } catch (e) {
+      console.error(e);
+      toast.error("Erreur durant la réinitialisation.");
     }
   };
 
@@ -398,6 +461,19 @@ export default function AdminDashboard() {
                       <option value="admin">Administrateur</option>
                     </select>
                   </div>
+                  {newRole === 'agent' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Localisation de l&apos;Agent</label>
+                      <select
+                        value={newAgentLocation}
+                        onChange={(e) => setNewAgentLocation(e.target.value as any)}
+                        className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="china">Chine</option>
+                        <option value="madagascar">Madagascar</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
                 <div className="flex justify-end">
                   <button
@@ -632,6 +708,14 @@ export default function AdminDashboard() {
                 >
                   <span className="font-semibold block mb-1">Nettoyer la base de données (DANGER)</span>
                   <span className="text-sm opacity-80 block">Supprime tous les colis, sacs, et historiques d&apos;actions. Les utilisateurs seront conservés. Cette action est IRREVERSIBLE.</span>
+                </button>
+                
+                <button
+                  onClick={handleResetDatabase}
+                  className="w-full text-left rounded-md bg-red-800 px-4 py-3 text-white hover:bg-red-900 transition-colors border border-red-900"
+                >
+                  <span className="font-semibold block mb-1">Réinitialiser les Utilisateurs (DANGER ABSOLU)</span>
+                  <span className="text-sm opacity-80 block">Supprime tous les utilisateurs de la base de données (sauf vous-même) et crée 4 comptes par défaut (admin, clients, agents Chine/Mada). Les mots de passe seront &quot;password123&quot;.</span>
                 </button>
               </div>
             </div>
