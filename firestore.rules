@@ -92,7 +92,9 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin() || isAgent();
-      allow create: if (isAdmin() || isBootstrapAdmin()) && isValidUser(request.resource.data) && request.resource.data.uid == userId;
+      // FIX: Allow bootstrap admins to create their own accounts without needing existing user doc
+      allow create: if isValidUser(request.resource.data) && request.resource.data.uid == userId && 
+                       (isBootstrapAdmin() || isAdmin());
       allow update: if isAdmin() && isValidUser(request.resource.data) && request.resource.data.uid == resource.data.uid;
       allow delete: if isAdmin();
     }
