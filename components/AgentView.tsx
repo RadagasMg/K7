@@ -123,14 +123,25 @@ export function AgentView({ profile }: AgentViewProps) {
       }
       const newStatus = existing.status === 'Entrant' ? (existing.clientId ? 'Lié' : 'Non lié') : existing.status;
       
+      // Store original state for potential rollback
+      const originalParcels = parcels;
+      
       // Optimistic update
       setParcels(prev => prev.map(p => p.id === existing.id ? { ...p, status: newStatus, updatedAt: now } : p));
       
-      await updateDoc(doc(db, 'parcels', existing.id), { status: newStatus, updatedAt: now });
-      if (newStatus !== existing.status) {
-        await logAction(existing.id, profile.uid, 'STATUS_CHANGED', { old: existing.status, new: newStatus, method: 'scanner' });
+      try {
+        await updateDoc(doc(db, 'parcels', existing.id), { status: newStatus, updatedAt: now });
+        if (newStatus !== existing.status) {
+          await logAction(existing.id, profile.uid, 'STATUS_CHANGED', { old: existing.status, new: newStatus, method: 'scanner' });
+        }
+        toast.success(`Colis ${code} scanné`);
+      } catch (error) {
+        console.error('Error updating parcel on scan:', error);
+        // Revert optimistic update
+        setParcels(originalParcels);
+        toast.error('Erreur lors de la mise à jour du colis');
+        return;
       }
-      toast.success(`Colis ${code} scanné`);
       
       // Auto-open edit modal
       setEditingParcel({ ...existing, status: newStatus, updatedAt: now });
@@ -177,12 +188,23 @@ export function AgentView({ profile }: AgentViewProps) {
         updatedAt: now
       };
       
+      // Store original parcels for potential rollback
+      const originalParcels = parcels;
+      
       // Optimistic update
       setParcels(prev => [newParcel, ...prev]);
       
-      await setDoc(doc(db, 'parcels', newId), newParcel);
-      await logAction(newId, profile.uid, 'CREATED', { status: 'Non lié', method: 'scanner' });
-      toast.success(`Nouveau colis ${code} enregistré`);
+      try {
+        await setDoc(doc(db, 'parcels', newId), newParcel);
+        await logAction(newId, profile.uid, 'CREATED', { status: 'Non lié', method: 'scanner' });
+        toast.success(`Nouveau colis ${code} enregistré`);
+      } catch (error) {
+        console.error('Error creating new parcel:', error);
+        // Revert optimistic update
+        setParcels(originalParcels);
+        toast.error('Erreur lors de la création du colis');
+        return;
+      }
       
       // Auto-open edit modal
       setEditingParcel(newParcel);
@@ -300,6 +322,10 @@ export function AgentView({ profile }: AgentViewProps) {
     }
 
     setIsUploading(true);
+    // Store original parcel for potential rollback
+    const originalEditingParcel = editingParcel;
+    const originalParcels = parcels;
+    
     try {
       const newImages: ParcelImage[] = [];
       if (labelImage) newImages.push(await uploadImage(labelImage, editingParcel.id, 'label'));
@@ -344,11 +370,15 @@ export function AgentView({ profile }: AgentViewProps) {
         if (inputRef.current) inputRef.current.focus();
       }, 100);
 
+      // Execute the database update
       await updateDoc(doc(db, 'parcels', editingParcel.id), updates);
       await logAction(editingParcel.id, profile.uid, 'UPDATED', { ...updates, imagesAdded: newImages.length });
       toast.success('Colis mis à jour');
     } catch (error) {
       console.error('Error updating parcel:', error);
+      // Revert optimistic updates
+      setParcels(originalParcels);
+      setEditingParcel(originalEditingParcel);
       toast.error('Erreur lors de la mise à jour');
     } finally {
       setIsUploading(false);
@@ -418,7 +448,7 @@ export function AgentView({ profile }: AgentViewProps) {
                   value={trackingInput}
                   onChange={(e) => setTrackingInput(e.target.value)}
                   autoFocus
-                  className="block w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-4 py-2 text-lg shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 h-full"
+                  className="block w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-4 py-2 text-lg shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                   placeholder="Scannez ou entrez..."
                 />
                 <button
@@ -472,7 +502,7 @@ export function AgentView({ profile }: AgentViewProps) {
                 placeholder="Rechercher (Non lié, Lié, En attente)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full sm:w-80 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm px-4 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
+                className="w-full sm:w-80 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm px-4 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               />
             </div>
           </div>
@@ -522,7 +552,7 @@ export function AgentView({ profile }: AgentViewProps) {
                       <select
                         value={editStatus}
                         onChange={(e) => setEditStatus(e.target.value as ParcelStatus)}
-                        className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none"
                         disabled={isUploading}
                       >
                         <option value="Entrant">Entrant</option>
@@ -540,7 +570,7 @@ export function AgentView({ profile }: AgentViewProps) {
                         <select
                           value={editClientId}
                           onChange={(e) => setEditClientId(e.target.value)}
-                          className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none"
                           disabled={isUploading}
                         >
                           <option value="">-- Sélectionner un client --</option>
@@ -567,7 +597,7 @@ export function AgentView({ profile }: AgentViewProps) {
                             if (scaleInputRef.current) scaleInputRef.current.click();
                           }
                         }}
-                        className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none"
                         required
                         disabled={isUploading}
                       />
@@ -590,7 +620,7 @@ export function AgentView({ profile }: AgentViewProps) {
                             accept="image/*"
                             capture="environment"
                             onChange={(e) => setLabelImage(e.target.files?.[0] || null)}
-                            className="block w-full text-xs text-gray-500 dark:text-gray-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 dark:file:bg-blue-900/30 dark:file:text-blue-400 hover:file:bg-blue-100 dark:hover:file:bg-blue-900/50"
+                            className="block w-full text-xs text-gray-500 dark:text-gray-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white"
                             disabled={isUploading}
                           />
                         )}
@@ -607,7 +637,7 @@ export function AgentView({ profile }: AgentViewProps) {
                             accept="image/*"
                             capture="environment"
                             onChange={(e) => setScaleImage(e.target.files?.[0] || null)}
-                            className="block w-full text-xs text-gray-500 dark:text-gray-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 dark:file:bg-blue-900/30 dark:file:text-blue-400 hover:file:bg-blue-100 dark:hover:file:bg-blue-900/50"
+                            className="block w-full text-xs text-gray-500 dark:text-gray-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white"
                             disabled={isUploading}
                           />
                         )}
@@ -624,7 +654,7 @@ export function AgentView({ profile }: AgentViewProps) {
                             accept="image/*"
                             capture="environment"
                             onChange={(e) => setOpenedImage(e.target.files?.[0] || null)}
-                            className="block w-full text-xs text-gray-500 dark:text-gray-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 dark:file:bg-blue-900/30 dark:file:text-blue-400 hover:file:bg-blue-100 dark:hover:file:bg-blue-900/50"
+                            className="block w-full text-xs text-gray-500 dark:text-gray-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white"
                             disabled={isUploading}
                           />
                         )}
@@ -641,7 +671,7 @@ export function AgentView({ profile }: AgentViewProps) {
                         value={editInternalNote}
                         onChange={(e) => setEditInternalNote(e.target.value)}
                         rows={2}
-                        className="mt-1 block w-full rounded-md border border-orange-300 dark:border-orange-700/50 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 shadow-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                        className="mt-1 block w-full rounded-md border border-orange-300 dark:border-orange-700/50 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 shadow-sm focus:border-orange-500 focus:outline-none"
                         placeholder="Notes visibles uniquement par l'équipe"
                         disabled={isUploading}
                       />
@@ -654,7 +684,7 @@ export function AgentView({ profile }: AgentViewProps) {
                       value={editNote}
                       onChange={(e) => setEditNote(e.target.value)}
                       rows={2}
-                      className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none"
                       disabled={isUploading}
                     />
                   </div>
