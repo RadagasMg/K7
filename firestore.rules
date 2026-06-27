@@ -11,6 +11,7 @@ service cloud.firestore {
     //   - name: string (required)
     //   - username: string (required, lowercase)
     //   - role: string (required, 'admin', 'agent', 'client')
+    //   - agentLocation?: string ('china' | 'madagascar', optional for agents)
     //   - createdAt: string (required)
     // ===============================================================
 
@@ -37,13 +38,14 @@ service cloud.firestore {
     }
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'name', 'username', 'role', 'createdAt']) &&
-             data.keys().hasOnly(['uid', 'name', 'username', 'role', 'createdAt', 'clientId', 'isDeleted', 'updatedAt']) &&
+             data.keys().hasOnly(['uid', 'name', 'username', 'role', 'createdAt', 'clientId', 'agentLocation', 'isDeleted', 'updatedAt']) &&
              data.uid is string && data.uid.size() > 0 &&
              data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
              data.username is string && data.username.size() > 0 && data.username.size() < 100 &&
              data.role in ['admin', 'agent', 'client'] &&
              data.createdAt is string &&
              (!('clientId' in data) || (data.clientId is string && data.clientId.size() > 0)) &&
+             (!('agentLocation' in data) || data.agentLocation in ['china', 'madagascar']) &&
              (!('isDeleted' in data) || data.isDeleted is bool) &&
              (!('updatedAt' in data) || data.updatedAt is string);
     }
@@ -52,6 +54,12 @@ service cloud.firestore {
       return isAuthenticated() && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'agent';
+    }
+
+    function isClient() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'client';
     }
     
     function isValidParcel(data) {
@@ -90,16 +98,33 @@ service cloud.firestore {
     }
 
     match /parcels/{parcelId} {
-      allow read: if isAuthenticated();
+      // READ: Admin/Agent can read all parcels. Clients can only read their own parcels.
+      allow read: if isAdmin() || isAgent() || (isClient() && request.auth.uid == resource.data.clientId);
+      
+      // CREATE: Only authenticated users can create parcels (agents, admins, clients)
       allow create: if isAuthenticated() && isValidParcel(request.resource.data) && request.resource.data.id == parcelId;
-      allow update: if isAuthenticated() && isValidParcel(request.resource.data) && request.resource.data.id == resource.data.id;
+      
+      // UPDATE: Authenticated users can update parcels. Clients cannot modify parcels not assigned to them.
+      allow update: if isAuthenticated() && isValidParcel(request.resource.data) && request.resource.data.id == resource.data.id &&
+                       (isAdmin() || isAgent() || (isClient() && request.auth.uid == resource.data.clientId));
+      
+      // DELETE: Only admin can delete
       allow delete: if isAdmin();
     }
 
     match /logs/{logId} {
-      allow read: if isAuthenticated();
+      // READ: Authenticated users can read logs. Clients can only see logs for their own parcels.
+      allow read: if isAuthenticated() && (isAdmin() || isAgent() || 
+                       (isClient() && exists(/databases/$(database)/documents/parcels/$(resource.data.parcelId)) && 
+                        get(/databases/$(database)/documents/parcels/$(resource.data.parcelId)).data.clientId == request.auth.uid));
+      
+      // CREATE: Authenticated users can create logs
       allow create: if isAuthenticated() && isValidLog(request.resource.data) && request.resource.data.id == logId;
-      allow update: if false; // Logs are immutable
+      
+      // UPDATE: Logs are immutable
+      allow update: if false;
+      
+      // DELETE: Only admin can delete
       allow delete: if isAdmin();
     }
 
