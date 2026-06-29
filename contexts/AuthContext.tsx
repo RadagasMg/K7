@@ -74,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(firebaseUser);
       
       if (firebaseUser) {
+        setLoading(true);
         // Listen to user profile in Firestore
         const unsubscribeProfile = onSnapshot(
           doc(db, 'users', firebaseUser.uid),
