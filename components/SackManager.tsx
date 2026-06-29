@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useRef, FormEvent } from 'react';
 import { auth, db } from '@/lib/firebase';
-import { collection, onSnapshot, doc, setDoc, updateDoc, query, where, getDocs, or } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, updateDoc, query, where, getDocs, or, writeBatch } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { logAction } from '@/lib/logger';
 import { Parcel, UserProfile, Sack } from '@/types';
 import { Scan, Plus, Printer, X, Package, CheckCircle, Lock, Unlock, Trash2 } from 'lucide-react';
 import Barcode from 'react-barcode';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface SackManagerProps {
   profile: UserProfile;
@@ -22,6 +23,8 @@ export function SackManager({ profile }: SackManagerProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [availableParcels, setAvailableParcels] = useState<Parcel[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedParcelIds, setSelectedParcelIds] = useState<Set<string>>(new Set());
+
   
   const scanInputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLFormElement>(null);
@@ -91,7 +94,11 @@ export function SackManager({ profile }: SackManagerProps) {
     }
   }, [activeSackId]);
 
-  const handleCreateSack = async () => {
+  const handleConsolidate = async () => {
+    if (selectedParcelIds.size === 0) {
+      toast.error('Sélectionnez au moins un colis pour créer un pack');
+      return;
+    }
     setIsProcessing(true);
     try {
       const today = new Date();
@@ -100,7 +107,6 @@ export function SackManager({ profile }: SackManagerProps) {
       const dd = today.getDate().toString().padStart(2, '0');
       const datePrefix = `${yy}${mm}${dd}`;
 
-      // Get count of sacks for today to generate NNN
       const startOfDay = new Date(today.setHours(0, 0, 0, 0)).toISOString();
       const endOfDay = new Date(today.setHours(23, 59, 59, 999)).toISOString();
       
@@ -126,10 +132,30 @@ export function SackManager({ profile }: SackManagerProps) {
         createdBy: profile.uid
       };
 
-      await setDoc(doc(db, 'sacks', barcode), newSack);
-      toast.success(`Pack ${barcode} créé`);
+      const batch = writeBatch(db);
       
-      // Auto-select and print
+      // Create the new sack
+      batch.set(doc(db, 'sacks', barcode), newSack);
+      
+      // Update selected parcels
+      selectedParcelIds.forEach(parcelId => {
+        batch.update(doc(db, 'parcels', parcelId), {
+          sackId: barcode,
+          status: 'Expédié',
+          updatedAt: now
+        });
+      });
+
+      await batch.commit();
+
+      // Log actions
+      for (const parcelId of selectedParcelIds) {
+        await logAction(parcelId, profile.uid, 'PACKED', { sackId: barcode, newStatus: 'Expédié', method: 'batch_consolidation' });
+      }
+
+      toast.success(`Pack ${barcode} créé avec ${selectedParcelIds.size} colis`);
+      
+      setSelectedParcelIds(new Set());
       setActiveSackId(barcode);
       handlePrint(newSack);
     } catch (error) {
@@ -279,8 +305,11 @@ export function SackManager({ profile }: SackManagerProps) {
           <div className="w-full max-w-4xl mx-auto">
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold mb-4">MANIFESTE DE SAC - K7 Logistics</h1>
-              <div className="flex justify-center mb-4">
+              <div className="flex justify-center mb-4 gap-4 items-center">
                 <Barcode value={sackToPrint.barcode} width={2} height={80} fontSize={20} />
+                <div className="bg-white p-2 border border-gray-200">
+                  <QRCodeSVG value={sackToPrint.id} size={80} />
+                </div>
               </div>
               <p className="text-lg text-gray-600">Date: {new Date().toLocaleDateString('fr-FR')} {new Date().toLocaleTimeString('fr-FR')}</p>
               <p className="text-lg font-bold">Poids Total Estimé: {totalWeight.toFixed(2)} kg</p>
@@ -320,55 +349,105 @@ export function SackManager({ profile }: SackManagerProps) {
       )}
 
       {!activeSackId ? (
-        // --- LIST OF SACKS ---
-        <div className="rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">Gestion du packing</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Créez et gérez les packs à expédier .</p>
+        <div className="space-y-6">
+          {/* Selectable Parcels Pool */}
+          <div className="rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+            <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">Colis disponibles</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Sélectionnez les colis à consolider.</p>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-sm">
+                  <span className="font-semibold">{selectedParcelIds.size}</span> sélectionné(s) • <span className="font-semibold">{availableParcels.filter(p => selectedParcelIds.has(p.id)).reduce((sum, p) => sum + (p.weight || 0), 0).toFixed(2)} kg</span>
+                </div>
+                <button
+                  onClick={handleConsolidate}
+                  disabled={isProcessing || selectedParcelIds.size === 0}
+                  className="flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  <Package className="mr-2 h-4 w-4" />
+                  Nouveau Packing
+                </button>
+              </div>
             </div>
-            <button
-              onClick={handleCreateSack}
-              disabled={isProcessing}
-              className="flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Nouveau Pack
-            </button>
+
+            {availableParcels.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 max-h-96 overflow-y-auto p-1">
+                {availableParcels.map(parcel => (
+                  <label
+                    key={parcel.id}
+                    className={`flex items-start space-x-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                      selectedParcelIds.has(parcel.id)
+                        ? 'border-blue-500 bg-blue-50 dark:border-blue-500/50 dark:bg-blue-900/20'
+                        : 'border-gray-200 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-750'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      checked={selectedParcelIds.has(parcel.id)}
+                      onChange={(e) => {
+                        const newSet = new Set(selectedParcelIds);
+                        if (e.target.checked) newSet.add(parcel.id);
+                        else newSet.delete(parcel.id);
+                        setSelectedParcelIds(newSet);
+                      }}
+                    />
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-semibold text-sm truncate">{parcel.trackingNumber}</span>
+                      <span className="text-xs text-gray-500">{parcel.weight ? `${parcel.weight} kg` : '-'}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-sm text-gray-500">Aucun colis disponible pour le packing.</div>
+            )}
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {sacks.map(sack => (
-              <div 
-                key={sack.id} 
-                className={`cursor-pointer rounded-xl border p-5 transition-all hover:shadow-md ${
-                  sack.status === 'Ouvert' 
-                    ? 'border-blue-200 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-900/10' 
-                    : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-800/50'
-                }`}
-                onClick={() => setActiveSackId(sack.id)}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <span className="font-bold text-lg text-gray-900 dark:text-white">{sack.barcode}</span>
-                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                    sack.status === 'Ouvert' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300' :
-                    sack.status === 'Fermé' ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' :
-                    'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300'
-                  }`}>
-                    {sack.status}
-                  </span>
-                </div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  Créé le {new Date(sack.createdAt).toLocaleDateString('fr-FR')}
-                  {sack.actualWeight && <span className="ml-2">• {sack.actualWeight} kg (Réel)</span>}
-                </div>
+          {/* LIST OF SACKS */}
+          <div className="rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">Sacs existants</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Gérez les packs déjà créés.</p>
               </div>
-            ))}
-            {sacks.length === 0 && (
-              <div className="col-span-full py-12 text-center text-gray-500 dark:text-gray-400">
-                Aucun sac créé pour le moment.
-              </div>
-            )}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {sacks.map(sack => (
+                <div 
+                  key={sack.id} 
+                  className={`cursor-pointer rounded-xl border p-5 transition-all hover:shadow-md ${
+                    sack.status === 'Ouvert' 
+                      ? 'border-blue-200 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-900/10' 
+                      : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-800/50'
+                  }`}
+                  onClick={() => setActiveSackId(sack.id)}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-bold text-lg text-gray-900 dark:text-white">{sack.barcode}</span>
+                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                      sack.status === 'Ouvert' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300' :
+                      sack.status === 'Fermé' ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' :
+                      'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300'
+                    }`}>
+                      {sack.status}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                    Créé le {new Date(sack.createdAt).toLocaleDateString('fr-FR')}
+                    {sack.actualWeight && <span className="ml-2">• {sack.actualWeight} kg (Réel)</span>}
+                  </div>
+                </div>
+              ))}
+              {sacks.length === 0 && (
+                <div className="col-span-full py-12 text-center text-gray-500 dark:text-gray-400">
+                  Aucun sac créé pour le moment.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       ) : (

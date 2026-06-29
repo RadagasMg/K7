@@ -10,6 +10,8 @@ import { SackManager } from '@/components/SackManager';
 import { Scan, X, Camera, Upload, Package, ShoppingBag } from 'lucide-react';
 import { compressImage } from '@/lib/imageUtils';
 
+import { QRCodeSVG } from 'qrcode.react';
+
 // Note: H5Qrcode is imported dynamically below to prevent SSR issues
 
 interface AgentViewProps {
@@ -85,12 +87,18 @@ export function AgentView({ profile }: AgentViewProps) {
       setClients(snapshot.docs.map(doc => doc.data() as UserProfile));
     });
 
-    const unsubscribe = onSnapshot(collection(db, 'parcels'), (snapshot) => {
+    let qParcels = query(collection(db, 'parcels'));
+    if (profile.agentLocation === 'china') {
+      qParcels = query(collection(db, 'parcels'), where('location', '==', 'china'), where('status', '==', 'En Transit'));
+    }
+    
+    const unsubscribe = onSnapshot(qParcels, (snapshot) => {
       const fetchedParcels = snapshot.docs.map(doc => doc.data() as Parcel);
       const oneMonthAgo = new Date();
       oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
       
       const filtered = fetchedParcels.filter(p => {
+        if (profile.agentLocation === 'china') return true;
         const isRecent = p.status !== 'Livré' || new Date(p.updatedAt) >= oneMonthAgo;
         return isRecent;
       });
@@ -103,7 +111,7 @@ export function AgentView({ profile }: AgentViewProps) {
       unsubscribe();
       unsubClients();
     };
-  }, []);
+  }, [profile.agentLocation]);
 
   const processScan = async (code: string) => {
     const now = new Date().toISOString();
@@ -418,17 +426,19 @@ export function AgentView({ profile }: AgentViewProps) {
           <Package className="mr-2 h-4 w-4" />
           réception
         </button>
-        <button
-          onClick={() => setActiveMainTab('sacs')}
-          className={`flex items-center rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            activeMainTab === 'sacs'
-              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-              : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
-          }`}
-        >
-          <ShoppingBag className="mr-2 h-4 w-4" />
-          Packing
-        </button>
+        {profile.agentLocation !== 'china' && (
+          <button
+            onClick={() => setActiveMainTab('sacs')}
+            className={`flex items-center rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+              activeMainTab === 'sacs'
+                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
+            }`}
+          >
+            <ShoppingBag className="mr-2 h-4 w-4" />
+            Packing
+          </button>
+        )}
       </div>
 
       {activeMainTab === 'colis' ? (
@@ -528,8 +538,13 @@ export function AgentView({ profile }: AgentViewProps) {
           {editingParcel && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
               <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-xl my-8 border border-gray-100 dark:border-gray-800">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Modifier {editingParcel.trackingNumber}</h3>
+                <div className="mb-4 flex items-start justify-between">
+                  <div className="flex flex-col gap-4">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">Modifier {editingParcel.trackingNumber}</h3>
+                    <div className="bg-white p-2 rounded-lg inline-block self-start shadow-sm border border-gray-100">
+                      <QRCodeSVG value={editingParcel.id} size={100} />
+                    </div>
+                  </div>
                   <button 
                     onClick={() => {
                       setEditingParcel(null);
