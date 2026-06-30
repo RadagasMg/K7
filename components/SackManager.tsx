@@ -254,10 +254,11 @@ export function SackManager({ profile }: SackManagerProps) {
     if (sack.status === 'Ouvert') {
       setActualWeightInput(totalWeight.toFixed(2));
       setClosingSack(sack);
-    } else if (sack.status !== 'En Transit') {
+    } else if (sack.status === 'Fermé') {
+      // Only 'Fermé' sacks (not yet shipped) can be reopened
       toggleSackStatus(sack, 'Ouvert');
     } else {
-      toast.error('Impossible de rouvrir ce sac car il est en transit');
+      toast.error('Impossible de rouvrir ce sac car il a déjà été expédié.');
     }
   };
 
@@ -493,7 +494,7 @@ export function SackManager({ profile }: SackManagerProps) {
                     <Lock className="mr-2 h-4 w-4" />
                     Fermer le sac
                   </button>
-                ) : activeSack?.status !== 'En Transit' ? (
+                ) : activeSack?.status === 'Fermé' ? (
                   <button
                     onClick={() => activeSack && handleToggleStatusClick(activeSack)}
                     className="flex items-center rounded-md bg-blue-100 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50"

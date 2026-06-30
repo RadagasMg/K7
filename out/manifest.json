@@ -1,0 +1,16 @@
+{
+  "name": "Logistics Forwarding Platform",
+  "short_name": "LogisticsApp",
+  "description": "Plateforme de suivi logistique",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

@@ -87,9 +87,10 @@ export function AgentView({ profile }: AgentViewProps) {
       setClients(snapshot.docs.map(doc => doc.data() as UserProfile));
     });
 
+    const chinaStatuses: ParcelStatus[] = ['Entrant', 'En attente', 'Expédié', 'En Transit'];
     let qParcels = query(collection(db, 'parcels'));
     if (profile.agentLocation === 'china') {
-      qParcels = query(collection(db, 'parcels'), where('location', '==', 'china'), where('status', '==', 'En Transit'));
+      qParcels = query(collection(db, 'parcels'), where('status', 'in', chinaStatuses));
     }
     
     const unsubscribe = onSnapshot(qParcels, (snapshot) => {
@@ -129,7 +130,7 @@ export function AgentView({ profile }: AgentViewProps) {
         toast.error(`Colis ${code} est déjà dans le sac ${existing.sackId}`);
         return;
       }
-      const newStatus = existing.status === 'Entrant' ? (existing.clientId ? 'Lié' : 'Non lié') : existing.status;
+      const newStatus = existing.status;
       
       // Store original state for potential rollback
       const originalParcels = parcels;
@@ -191,7 +192,7 @@ export function AgentView({ profile }: AgentViewProps) {
       const newParcel: Parcel = {
         id: newId,
         trackingNumber: code,
-        status: 'Non lié',
+        status: 'Entrant',
         createdAt: now,
         updatedAt: now
       };
@@ -204,7 +205,7 @@ export function AgentView({ profile }: AgentViewProps) {
       
       try {
         await setDoc(doc(db, 'parcels', newId), newParcel);
-        await logAction(newId, profile.uid, 'CREATED', { status: 'Non lié', method: 'scanner' });
+        await logAction(newId, profile.uid, 'CREATED', { status: 'Entrant', method: 'scanner' });
         toast.success(`Nouveau colis ${code} enregistré`);
       } catch (error) {
         console.error('Error creating new parcel:', error);
@@ -220,7 +221,7 @@ export function AgentView({ profile }: AgentViewProps) {
       setEditNote('');
       setEditInternalNote('');
       setEditClientId('');
-      setEditStatus('Non lié');
+      setEditStatus('Entrant');
       setLabelImage(null);
       setScaleImage(null);
       setOpenedImage(null);
@@ -350,9 +351,6 @@ export function AgentView({ profile }: AgentViewProps) {
 
       if (editClientId) {
         updates.clientId = editClientId;
-        if (editingParcel.status === 'Non lié' && editStatus === 'Non lié') {
-          updates.status = 'Lié';
-        }
       }
 
       if (editStatus) {
@@ -396,9 +394,11 @@ export function AgentView({ profile }: AgentViewProps) {
   const filteredParcels = parcels.filter(p => !p.isArchived).filter(p => {
     if (!searchQuery) return true;
     
-    // Only search among these statuses as requested
-    const targetStatuses = ['Non lié', 'Lié', 'En attente'];
-    if (!targetStatuses.includes(p.status as string)) return false;
+    // Only search among relevant statuses
+    const targetStatuses: ParcelStatus[] = profile.agentLocation === 'china'
+      ? ['Entrant', 'En attente', 'Expédié', 'En Transit']
+      : ['Entrant', 'En attente'];
+    if (!targetStatuses.includes(p.status)) return false;
 
     const lowerQuery = searchQuery.toLowerCase();
     const clientName = p.clientName || '';
@@ -509,7 +509,7 @@ export function AgentView({ profile }: AgentViewProps) {
               </div>
               <input
                 type="text"
-                placeholder="Rechercher (Non lié, Lié, En attente)..."
+                placeholder="Rechercher un colis..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full sm:w-80 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm px-4 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
@@ -571,8 +571,6 @@ export function AgentView({ profile }: AgentViewProps) {
                         disabled={isUploading}
                       >
                         <option value="Entrant">Entrant</option>
-                        <option value="Non lié">Non lié</option>
-                        <option value="Lié">Lié</option>
                         <option value="En attente">En attente</option>
                         <option value="Expédié">Expédié</option>
                         <option value="Prêt">Prêt</option>

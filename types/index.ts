@@ -1,4 +1,4 @@
-export type ParcelStatus = 'Entrant' | 'Non lié' | 'Lié' | 'En attente' | 'Expédié' | 'Prêt' | 'Livré' | 'En Transit';
+export type ParcelStatus = 'Entrant' | 'En attente' | 'Expédié' | 'Prêt' | 'Livré' | 'En Transit';
 export type SackStatus = 'Ouvert' | 'Fermé' | 'En Transit' | 'Reçu';
 
 export interface Sack {
@@ -38,6 +38,7 @@ export interface Parcel {
   trackingNumber: string;
   status: ParcelStatus;
   location?: 'china' | 'madagascar';
+  linked?: boolean;
   weight?: number;
   note?: string;
   internalNote?: string;

@@ -66,7 +66,8 @@ service cloud.firestore {
       return data.keys().hasAll(['id', 'trackingNumber', 'status', 'createdAt', 'updatedAt']) &&
              data.id is string && data.id.size() > 0 &&
              data.trackingNumber is string && data.trackingNumber.size() > 0 && data.trackingNumber.size() < 100 &&
-             data.status in ['Entrant', 'Non lié', 'Lié', 'En attente', 'Expédié', 'Prêt', 'Livré', 'En Transit'] &&
+             data.status in ['Entrant', 'En attente', 'Expédié', 'Prêt', 'Livré', 'En Transit'] &&
+             (!('linked' in data) || data.linked is bool) &&
              (!('location' in data) || data.location in ['china', 'madagascar']) &&
              data.createdAt is string &&
              data.updatedAt is string;
@@ -136,7 +137,9 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidSack(request.resource.data) && request.resource.data.id == sackId;
       allow update: if isAuthenticated() && isValidSack(request.resource.data) && request.resource.data.id == resource.data.id &&
-                       (resource.data.status != 'En Transit' || request.resource.data.status == 'Reçu');
+                       // Workflow: Ouvert ↔ Fermé → En Transit → Reçu (forward-only after transit)
+                       (resource.data.status in ['Ouvert', 'Fermé'] ||
+                        (resource.data.status == 'En Transit' && request.resource.data.status == 'Reçu'));
       allow delete: if isAdmin();
     }
 

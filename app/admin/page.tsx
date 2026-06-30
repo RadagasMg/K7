@@ -39,6 +39,7 @@ export default function AdminDashboard() {
   // Filters for parcels
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [filterLinked, setFilterLinked] = useState('');
   const [filterClient, setFilterClient] = useState('');
 
   // Edit Modal States
@@ -265,6 +266,38 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleMigrateLinkStatus = async () => {
+    if (!window.confirm("Cette migration va convertir les colis avec statut 'Non lié' ou 'Lié' vers le nouveau système. Continuer ?")) return;
+
+    try {
+      toast.info('Migration en cours...');
+      const batch = writeBatch(db);
+      let migratedCount = 0;
+
+      for (const p of parcels) {
+        if (p.status === 'Non lié' as any || p.status === 'Lié' as any) {
+          const parcelRef = doc(db, 'parcels', p.id);
+          batch.update(parcelRef, {
+            status: 'Entrant',
+            linked: !!p.clientId,
+            updatedAt: new Date().toISOString()
+          });
+          migratedCount++;
+        }
+      }
+
+      if (migratedCount > 0) {
+        await batch.commit();
+        toast.success(`${migratedCount} colis migrés avec succès (Non lié/Lié → Entrant + linked)`);
+      } else {
+        toast.info('Aucun colis à migrer trouvé.');
+      }
+    } catch (error: any) {
+      console.error('Migration error:', error);
+      toast.error('Erreur lors de la migration: ' + error.message);
+    }
+  };
+
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAdminPassword || newAdminPassword.length < 8) {
@@ -364,9 +397,7 @@ export default function AdminDashboard() {
 
       if (editClientId !== undefined) {
         updates.clientId = editClientId;
-        if (editingParcel.status === 'Non lié' && editStatus === 'Non lié' && editClientId) {
-          updates.status = 'Lié';
-        }
+        updates.linked = !!editClientId;
       }
 
       if (editStatus) updates.status = editStatus;
@@ -397,6 +428,8 @@ export default function AdminDashboard() {
   const filteredParcels = parcels.filter(p => {
     if (p.isArchived) return false;
     if (filterStatus && p.status !== filterStatus) return false;
+    if (filterLinked === 'linked' && !p.clientId) return false;
+    if (filterLinked === 'unlinked' && p.clientId) return false;
     if (filterClient && p.clientId !== filterClient) return false;
     if (searchTerm && !p.trackingNumber.toLowerCase().includes(searchTerm.toLowerCase())) return false;
     return true;
@@ -575,7 +608,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Search and Filters */}
-            <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Recherche par Tracking</label>
                 <input
@@ -601,12 +634,23 @@ export default function AdminDashboard() {
                 >
                   <option value="">Tous les statuts</option>
                   <option value="Entrant">Entrant</option>
-                  <option value="Non lié">Non lié</option>
-                  <option value="Lié">Lié</option>
                   <option value="En attente">En attente</option>
                   <option value="Expédié">Expédié</option>
                   <option value="Prêt">Prêt</option>
                   <option value="Livré">Livré</option>
+                  <option value="En Transit">En Transit</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Filtrer par Liaison</label>
+                <select
+                  value={filterLinked}
+                  onChange={(e) => setFilterLinked(e.target.value)}
+                  className="block w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="">Tous</option>
+                  <option value="linked">Lié</option>
+                  <option value="unlinked">Non lié</option>
                 </select>
               </div>
               <div>
@@ -703,6 +747,14 @@ export default function AdminDashboard() {
                 </button>
                 
                 <button
+                  onClick={handleMigrateLinkStatus}
+                  className="w-full text-left rounded-md bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors border border-amber-100 dark:border-amber-800"
+                >
+                  <span className="font-semibold block mb-1">Migrer les statuts Lié/Non lié</span>
+                  <span className="text-sm opacity-80 block">Convertit les colis ayant un ancien statut &quot;Non lié&quot; ou &quot;Lié&quot; vers le nouveau système (statut → Entrant + champ liaison séparé).</span>
+                </button>
+                
+                <button
                   onClick={handleCleanDatabase}
                   className="w-full text-left rounded-md bg-red-50 dark:bg-red-900/20 px-4 py-3 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors border border-red-100 dark:border-red-800"
                 >
@@ -750,12 +802,11 @@ export default function AdminDashboard() {
                     disabled={isUploading}
                   >
                     <option value="Entrant">Entrant</option>
-                    <option value="Non lié">Non lié</option>
-                    <option value="Lié">Lié</option>
                     <option value="En attente">En attente</option>
                     <option value="Expédié">Expédié</option>
                     <option value="Prêt">Prêt</option>
                     <option value="Livré">Livré</option>
+                    <option value="En Transit">En Transit</option>
                   </select>
                 </div>
                 <div>

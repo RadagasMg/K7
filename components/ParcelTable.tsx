@@ -109,12 +109,11 @@ export function ParcelTable({ parcels, clients = [], profile, onEdit, readOnly }
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Entrant': return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
-      case 'Non lié': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
-      case 'Lié': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
       case 'En attente': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
       case 'Expédié': return 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400';
       case 'Prêt': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
       case 'Livré': return 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300';
+      case 'En Transit': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400';
       default: return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
     }
   };
@@ -134,6 +133,9 @@ export function ParcelTable({ parcels, clients = [], profile, onEdit, readOnly }
             </th>
             <th onClick={() => handleSort('status')} className="cursor-pointer px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
               Statut <SortIcon column="status" />
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              Liaison
             </th>
             <th onClick={() => handleSort('clientName')} className="cursor-pointer px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
               Client <SortIcon column="clientName" />
@@ -170,6 +172,15 @@ export function ParcelTable({ parcels, clients = [], profile, onEdit, readOnly }
                 <td className="whitespace-nowrap px-6 py-4">
                   <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${getStatusColor(parcel.status)}`}>
                     {parcel.status}
+                  </span>
+                </td>
+                <td className="whitespace-nowrap px-6 py-4">
+                  <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
+                    parcel.clientId
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                      : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                  }`}>
+                    {parcel.clientId ? 'Lié' : 'Non lié'}
                   </span>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500 dark:text-gray-400">

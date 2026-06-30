@@ -40,12 +40,11 @@ export default function ClientDashboard() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Entrant': return 'bg-gray-100 text-gray-800';
-      case 'Non lié': return 'bg-red-100 text-red-800';
-      case 'Lié': return 'bg-blue-100 text-blue-800';
       case 'En attente': return 'bg-yellow-100 text-yellow-800';
       case 'Expédié': return 'bg-indigo-100 text-indigo-800';
       case 'Prêt': return 'bg-green-100 text-green-800';
       case 'Livré': return 'bg-gray-200 text-gray-600';
+      case 'En Transit': return 'bg-purple-100 text-purple-800';
       default: return 'bg-blue-100 text-blue-800';
     }
   };
